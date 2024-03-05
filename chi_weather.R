@@ -72,23 +72,29 @@ final50_stations %>% write_csv(file = 'Data Science Practice/Weather/final50_sta
 
 ###
 
-###
+###function that gathers noaa data from stations' ghcn ID, from a specified date range (yyyy-mm-dd)
+weather_scrape <- function(stations, startdate, enddate){
+  weather_url <- paste0('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=', chicago_station,
+                        '&startDate=', startdate, '&endDate=', enddate, '&boundingBox=90,-180,-90,180')
+  weather_data <- read_csv(weather_url)
+  return(weather_data)
+}
+
+
 stations <- final50_stations$ghcn_id[1:50]
 stations <- stations %>% paste0(collapse = ',')
 chicago_station <- 'USW00094846'
 startdate <- '1970-01-01'
 enddate <- today()
 
-paste0('https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=', chicago_station,
-       '&startDate=', startdate, '&endDate=', enddate, '&boundingBox=90,-180,-90,180')
+final50_stations[final50_stations$CALL_SIGN == 'ORD',]
 
-read_csv("https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=USW00094846&startDate=1970-01-01&endDate=2024-02-13&boundingBox=90,-180,-90,180") %>% tail()
+weather_data <- read_csv(weather_url) 
 
-weather_data <- read_csv('Data Science Practice/Weather/daily-summaries-2024-01-28T14-30-46.csv')
 weather_data %<>% select(where(function(x) any(!is.na(x))))
 weather_data %<>% select(-PGTM)
-weather_data[,c('TAVG', 'TMAX', 'TMIN', 'ADPT', 'AWBT')] <- (weather_data[,c('TAVG', 'TMAX', 'TMIN', 'ADPT', 'AWBT')] / 10) %>% celsius.to.fahrenheit()
-weather_data[,c('AWND', 'WSF2', 'WSF5')] <- weather_data[,c('AWND', 'WSF2', 'WSF5')]*.2237
+weather_data[,c('TAVG', 'TMAX', 'TMIN', 'ADPT', 'AWBT')] <- (weather_data[,c('TAVG', 'TMAX', 'TMIN', 'ADPT', 'AWBT')] / 10) %>% celsius.to.fahrenheit() #converting all temps from 10x C to F
+weather_data[,c('AWND', 'WSF2', 'WSF5')] <- weather_data[,c('AWND', 'WSF2', 'WSF5')]*.2237 #windspeeds from kph to mph
 
 winter_months <- c(12, 1, 2)
 
@@ -132,18 +138,20 @@ ggplot(data = winter_data %>% group_by(DECADE = WINTER - WINTER %% 10, WINTER_WE
 med_avg_df <- winter_data %>% group_by(WINTER, MONTH = month(DATE)) %>% summarize(medmaxtemp = median(TMAX), medmintemp = median(TMIN), avgmaxtemp = mean(TMAX), avgmintemp = mean(TMIN)) #grouped df with median maxtemp for each month & year
 long_monthly_temps <- med_avg_df %>% pivot_longer(-c(WINTER, MONTH), names_to = 'METRIC', values_to = 'TEMP')
 
-
+###GREAT visualization of median monthly temps across time (WINTERS) grouped by each month
 ggplot(data = transform(long_monthly_temps[long_monthly_temps$MONTH %in% c(12, 1, 2, 3) & long_monthly_temps$METRIC %in% c('medmaxtemp', 'medmintemp'),], MONTH = factor(MONTH, levels = c(12, 1, 2, 3))), mapping = aes(TEMP, x = WINTER, color = METRIC)) + geom_line() + facet_wrap(vars(MONTH), labeller = as_labeller(c('12' = 'December', '1' = 'January', '2' = 'February', '3' = 'March')), scales = "free") + 
-  geom_smooth(method = "lm", se = FALSE, linetype = 'dotted', size = .6, alpha = .5) + scale_y_continuous(limits = c(0, 68)) + labs(title = "Median Monthly Maximum & Minimum Temperatures") + scale_colour_manual(values = c(medmaxtemp = '#ff0000', medmintemp = '#88c7dc'))
+  geom_hline(yintercept = 32, size = .4, alpha = .7, linetype = 'dashed') + #annotate("text", x = 1968, y = 30, label = "32°F", family = 'Optima') +
+  geom_smooth(method = "lm", se = FALSE, linetype = 'dotted', size = .8, alpha = .6) + scale_y_continuous(limits = c(0, 68)) + labs(title = "Median Monthly Maximum & Minimum Temperatures", subtitle = ("(Note January, February, & March fall under the winter of the previous year\nE.G Jan 2001 is in the Winter of 2000)")) + ylab(label = 'Temperature (°F)') + xlab(label = 'Winter') + scale_colour_manual(values = c(medmaxtemp = '#ff0000', medmintemp = '#88c7dc'), name = '', labels = c('Median High Temperature', 'Median Low Temperature')) +
+  theme_linedraw() + theme(plot.title = element_text(face = 'bold')) + theme(plot.title = element_text(hjust = .5), plot.subtitle = element_text(hjust = .5), text = element_text(size = 14, family = 'Optima'), panel.grid = element_line(size = .7, linetype = 'solid', color = '#000000'))
 
 
 
+long_monthly_temps
 
-
-med_max_df[med_max_df$MONTH == 12,] %>% lm(medtemp ~ WINTER, .)
-med_max_df[med_max_df$MONTH == 1,] %>% lm(medtemp ~ WINTER, .)
-med_max_df[med_max_df$MONTH == 2,] %>% lm(medtemp ~ WINTER, .)
-med_max_df[med_max_df$MONTH == 3,] %>% lm(medtemp ~ WINTER, .)
+dec_min_med_mod <- long_monthly_temps[long_monthly_temps$MONTH == 12 & long_monthly_temps$METRIC == 'medmintemp',] %>% lm(TEMP ~ WINTER, .)   ##### -208.0354 + 0.1157
+long_monthly_temps[long_monthly_temps$MONTH == 1 & long_monthly_temps$METRIC == 'medmintemp',] %>% lm(TEMP ~ WINTER, .)   ##### -293.0626 + 0.1553
+long_monthly_temps[long_monthly_temps$MONTH == 2 & long_monthly_temps$METRIC == 'medmintemp',] %>% lm(TEMP ~ WINTER, .)   ##### 70.70226 + -0.02528
+long_monthly_temps[long_monthly_temps$MONTH == 3 & long_monthly_temps$METRIC == 'medmintemp',] %>% lm(TEMP ~ WINTER, .)   ##### -55.56912 + 0.04273
 
 
 
